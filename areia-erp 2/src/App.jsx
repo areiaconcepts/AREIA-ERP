@@ -48,6 +48,12 @@ const ESTADOS_CONTENIDO = ["Idea", "En producción", "En revisión", "Listo", "P
 const ESTADOS_BAZAR = ["Por confirmar", "Confirmado", "Realizado"];
 const ESTADOS_DESCUENTO = ["Activo", "Programado", "Vencido"];
 
+const RECORDATORIOS_MENSUALES = [
+  { dia: 5,  emoji: "📦", label: "CIERRE AREIA CONCEPTS", color: "#E8A45A" },
+  { dia: 10, emoji: "🏦", label: "PAGO PREVIRED",         color: "#6B8FBF" },
+  { dia: 29, emoji: "💸", label: "PAGO CAMI ADS",         color: "#C17A5B" },
+];
+
 function fmtCLP(n) {
   return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n || 0);
 }
@@ -178,6 +184,56 @@ export default function App() {
   );
 }
 
+// ─── Recordatorios Widget ────────────────────────────────────
+function RecordatoriosWidget() {
+  const hoy = new Date().getDate();
+  const mes = new Date().toLocaleString("es-CL", { month: "long", year: "numeric" });
+
+  const items = [...RECORDATORIOS_MENSUALES]
+    .map(r => {
+      const diff = r.dia - hoy;
+      let badge, bg, borderColor;
+      if (diff === 0)                 { badge = "🔴 HOY";           bg = "#FEE9E1"; borderColor = "#C17A5B"; }
+      else if (diff === 1)            { badge = "🟡 Mañana";        bg = "#FEF6E4"; borderColor = "#E8A45A"; }
+      else if (diff > 1 && diff <= 5) { badge = `🟡 En ${diff} días`; bg = "#FEF6E4"; borderColor = "#E8DDD0"; }
+      else if (diff > 5)              { badge = `📅 Día ${r.dia}`;  bg = "#FBF7F0"; borderColor = "#E8DDD0"; }
+      else                            { badge = "✅ Listo";          bg = "#F0F4EC"; borderColor = "#D8E4D0"; }
+      return { ...r, diff, badge, bg, borderColor };
+    })
+    .sort((a, b) => {
+      if (a.diff === 0) return -1;
+      if (b.diff === 0) return 1;
+      if (a.diff > 0 && b.diff <= 0) return -1;
+      if (a.diff <= 0 && b.diff > 0) return 1;
+      return a.diff - b.diff;
+    });
+
+  return (
+    <div className="erp-card" style={{ gridColumn: "1 / -1", borderColor: "#E8DDD0" }}>
+      <p style={{ fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.18em", color: "#C17A5B", marginBottom: "0.2rem" }}>
+        Compromisos · {mes}
+      </p>
+      <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.35rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        Recordatorios del mes
+      </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.65rem" }}>
+        {items.map(r => (
+          <div key={r.dia} style={{
+            background: r.bg,
+            border: `1.5px solid ${r.borderColor}`,
+            borderRadius: "0.75rem",
+            padding: "0.85rem 1rem",
+          }}>
+            <div style={{ fontSize: "0.65rem", fontWeight: 700, color: r.color, marginBottom: "0.3rem", letterSpacing: "0.06em" }}>{r.badge}</div>
+            <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "#3A2E25" }}>{r.emoji} {r.label}</div>
+            <div style={{ fontSize: "0.7rem", color: "#9C8A78", marginTop: "0.15rem" }}>Cada día {r.dia}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 function Card({ eyebrow, title, children, span = 1, err = false, full = false }) {
   return (
@@ -203,29 +259,97 @@ function Stat({ label, value, sub, accent = false }) {
 
 // ─── Tabs ────────────────────────────────────────────────────
 function InicioTab({ orders, products, manualData }) {
+  const ahora = new Date();
+  const diaNum = ahora.getDate();
+  const fechaStr = ahora.toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const hora = ahora.getHours();
+  const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
+
   const total = orders.filter(o => o.estado !== "DEVUELTO").reduce((s, o) => s + o.monto, 0);
   const totalStock = products.reduce((s, p) => s + p.stock, 0);
   const sinStock = products.filter(p => p.stock === 0).length;
-  const prox = manualData.bazares.find(b => b.estado !== "Realizado");
   const allGoals = [...manualData.goals.corto, ...manualData.goals.mediano, ...manualData.goals.largo];
+
+  const proxBazares = manualData.bazares
+    .filter(b => b.estado !== "Realizado" && b.fecha)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const prox = proxBazares[0];
+
+  let diasBazar = null;
+  if (prox?.fecha) {
+    const fechaBazar = new Date(prox.fecha + "T12:00:00");
+    diasBazar = Math.ceil((fechaBazar - ahora) / (1000 * 60 * 60 * 24));
+  }
+
+  const alertaHoy = RECORDATORIOS_MENSUALES.find(r => r.dia === diaNum);
+  const bazarUrgente = diasBazar !== null && diasBazar <= 1;
+
   return (
-    <Grid cols={3}>
-      <Card eyebrow="Bienvenida" title="Areia Concepts" span={3}>
-        <p style={{ fontSize: "0.88rem", lineHeight: 1.65, color: "#5A4A3D" }}>
-          Tu ERP conectado a Shopify. Ventas, inventario y productos en tiempo real desde <strong>areiaconcepts.com</strong>. Las ventas presenciales las ingresas manualmente en Bazares.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.85rem" }}>
-          <span className="erp-pill live">✦ Shopify conectado</span>
-          <span className="erp-pill">540 pedidos históricos</span>
-          <span className="erp-pill">Plan Basic · CLP</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+
+      {/* Alertas del día */}
+      {(alertaHoy || bazarUrgente) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {alertaHoy && (
+            <div style={{ background: "#FEE9E1", border: "1.5px solid #C17A5B", borderRadius: "0.75rem", padding: "0.85rem 1.25rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <span style={{ fontSize: "1.25rem" }}>{alertaHoy.emoji}</span>
+              <div>
+                <div style={{ fontWeight: 700, color: "#C17A5B", fontSize: "0.72rem", letterSpacing: "0.08em" }}>🔴 RECORDATORIO DE HOY</div>
+                <div style={{ fontWeight: 600, color: "#3A2E25", fontSize: "0.95rem" }}>{alertaHoy.label}</div>
+              </div>
+            </div>
+          )}
+          {bazarUrgente && (
+            <div style={{ background: "#FEF6E4", border: "1.5px solid #E8A45A", borderRadius: "0.75rem", padding: "0.85rem 1.25rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <span style={{ fontSize: "1.25rem" }}>🛍</span>
+              <div>
+                <div style={{ fontWeight: 700, color: "#E8A45A", fontSize: "0.72rem", letterSpacing: "0.08em" }}>
+                  {diasBazar === 0 ? "🟡 BAZAR HOY" : "🟡 BAZAR MAÑANA"}
+                </div>
+                <div style={{ fontWeight: 600, color: "#3A2E25", fontSize: "0.95rem" }}>{prox.nombre} · {prox.ciudad}</div>
+              </div>
+            </div>
+          )}
         </div>
-      </Card>
-      <Card eyebrow="Ventas Shopify" span={1}><Stat value={fmtCLP(total)} label="Ingresos online" /></Card>
-      <Card eyebrow="Inventario" span={1}><Stat value={totalStock} label="Unidades en stock" sub={sinStock > 0 ? `${sinStock} sin stock` : undefined} /></Card>
-      <Card eyebrow="Próximo evento" span={1}><Stat value={prox ? prox.nombre : "Sin eventos"} label={prox ? `${prox.ciudad} · ${prox.fecha}` : "Agrega en Bazares"} /></Card>
-      <Card eyebrow="Objetivos" span={1}><Stat value={`${allGoals.filter(g => g.done).length}/${allGoals.length}`} label="Completados" /></Card>
-      <Card eyebrow="Próximo shooting" span={2}><Stat value="2 julio 2026" label="Areia Wanted Girls · Santiago" /></Card>
-    </Grid>
+      )}
+
+      <Grid cols={3}>
+        {/* Saludo */}
+        <Card eyebrow={fechaStr} title={`${saludo}, Camila 🤎`} span={3}>
+          <p style={{ fontSize: "0.88rem", lineHeight: 1.65, color: "#5A4A3D" }}>
+            Tu centro de mando Areia. Shopify en tiempo real · ventas, inventario y eventos desde un solo lugar.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.85rem" }}>
+            <span className="erp-pill live">✦ Shopify conectado</span>
+            <span className="erp-pill">540 pedidos históricos</span>
+            <span className="erp-pill">Plan Basic · CLP</span>
+            {diasBazar !== null && diasBazar <= 7 && (
+              <span className="erp-pill" style={{ background: diasBazar <= 1 ? "#FEE9E1" : "#FEF6E4", color: "#A85F40", fontWeight: 700 }}>
+                {diasBazar === 0 ? `🚨 ${prox.nombre} HOY` : diasBazar === 1 ? `🟡 ${prox.nombre} MAÑANA` : `📅 ${prox.nombre} en ${diasBazar} días`}
+              </span>
+            )}
+          </div>
+        </Card>
+
+        {/* Recordatorios mensuales */}
+        <RecordatoriosWidget />
+
+        {/* Stats rápidos */}
+        <Card eyebrow="Ventas Shopify" span={1}><Stat value={fmtCLP(total)} label="Ingresos online" /></Card>
+        <Card eyebrow="Inventario" span={1}><Stat value={totalStock} label="Unidades en stock" sub={sinStock > 0 ? `${sinStock} sin stock` : undefined} /></Card>
+        <Card eyebrow="Próximo evento" span={1}>
+          <Stat
+            value={prox ? prox.nombre : "Sin eventos"}
+            label={prox
+              ? `${prox.ciudad} · ${prox.fecha}${diasBazar !== null ? ` · ${diasBazar === 0 ? "HOY 🚨" : diasBazar === 1 ? "MAÑANA" : `en ${diasBazar} días`}` : ""}`
+              : "Agrega en Bazares"}
+            accent={diasBazar !== null && diasBazar <= 3}
+          />
+        </Card>
+        <Card eyebrow="Objetivos" span={1}><Stat value={`${allGoals.filter(g => g.done).length}/${allGoals.length}`} label="Completados" /></Card>
+        <Card eyebrow="Próximo shooting" span={2}><Stat value="2 julio 2026" label="Areia Wanted Girls · Santiago" /></Card>
+      </Grid>
+    </div>
   );
 }
 
